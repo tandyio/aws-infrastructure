@@ -147,25 +147,23 @@ Resources:
   NetworkInterface:
     Type: AWS::EC2::NetworkInterface
     Properties:
+      GroupSet:
+      - !Ref BiDirectionalSecurityGroup
+      SourceDestCheck: true
       SubnetId:
         Ref: PublicSubnet
-
-  NetworkInterfacePermission:
-    Type: AWS::EC2::NetworkInterfacePermission
-    Properties:
-      AwsAccountId:
-        Ref: AWS::AccountId
-      NetworkInterfaceId: 
-        Ref: NetworkInterface
-      Permission: EIP-ASSOCIATE
 
   ElasticIP:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
-      InstanceId: 
-        Ref: NetworkInterface
     DependsOn: VPCGatewayAttachment
+
+  ElasticIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      NetworkInterfaceId: !Ref NetworkInterface
 
   NAT:
     Type: AWS::EC2::NatGateway
