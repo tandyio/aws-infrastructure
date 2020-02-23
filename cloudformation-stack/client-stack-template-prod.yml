@@ -144,26 +144,11 @@ Resources:
       InternetGatewayId: 
         Ref: InternetGateway
 
-  NetworkInterface:
-    Type: AWS::EC2::NetworkInterface
-    Properties:
-      GroupSet:
-      - !Ref BiDirectionalSecurityGroup
-      SourceDestCheck: true
-      SubnetId:
-        Ref: PublicSubnet
-
   ElasticIP:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
     DependsOn: VPCGatewayAttachment
-
-  ElasticIPAssociation:
-    Type: AWS::EC2::EIPAssociation
-    Properties:
-      AllocationId: !GetAtt ElasticIP.AllocationId
-      NetworkInterfaceId: !Ref NetworkInterface
 
   NAT:
     Type: AWS::EC2::NatGateway
