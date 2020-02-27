@@ -1,13 +1,25 @@
-# This CloudFormation template bundles all VPC and network configurations into a single
-# stack for each of my clients. Creates a Virtual Private Cloud with two subnets (Public
-# and Private). Creates security groups usable by services running on the public subnet
-# that authorize all traffic, only inbound requests or only outbound.
+# NOTE: This is a WIP as I move to CloudFormation. This is not yet complete!
 # 
-# Internet Gateway, routing tables/rules and NAT Gateway with Elastic IPs are attached
-# following this model: 
-# https://docs.aws.amazon.com/vpc/latest/userguide/images/nat-gateway-diagram.png
-# No inbound or outbound traffic is allowed to the private subnet outside of the NAT
-# Gateway. 
+# This cloud formation template builds a stack of resources tied to a VPC.
+# This is primarily useful for cost isolation/tagging as it sets up the infrastructure
+# to run a full web to back-end stack including a public s3 bucket for website hosting
+# and CloudFront distribution that points to the bucket. Just plug and play a CNAME
+# record for your domain pointing to CloudFront.
+#
+# All back-end resources should run on the private subnet, and the included API Gateway V2
+# should be used to handle all public traffic needing to be consumed by services like Lambda.
+#
+# Note: API Gateway V2 supports HTTPS and Websocket traffic. A V1 gateway is necessary for REST. 
+#
+# I personally use this template to help friends/clients monitor AWS usage tightly (by association
+# to their single VPC/CF Template) and implement security best practices at the same time. Additional
+# services like RDS or Lambda should be added to this template as needed. 
+#
+# A CodeBuild Project is also configured at the end of this template (remove if not needed) that
+# compiles Angular9 web apps. I use a single CodePipeline (b/c free tier limit) that orchestrates
+# which CodeBuild Project should be invoked based on the Source step/artifacts. Since CodeBuild
+# charges usage, it's key to include for cost tracking.
+
 
 AWSTemplateFormatVersion: "2010-09-09"
 
@@ -149,16 +161,6 @@ Resources:
     Properties:
       Domain: vpc
     DependsOn: VPCGatewayAttachment
-
-  NAT:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId:
-        Fn::GetAtt:
-          - ElasticIP
-          - AllocationId
-      SubnetId:
-        Ref: PublicSubnet
   
   PublicRouteTable:
     Type: AWS::EC2::RouteTable 
@@ -181,11 +183,49 @@ Resources:
       GatewayId:
         Ref: InternetGateway
 
-  NATRoute:
-    Type: AWS::EC2::Route
+  PrivateLogBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      RouteTableId:
-        Ref: PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId:
-        Ref: NAT
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  PublicWebsiteS3:
+    Type: AWS::S3::Bucket 
+    Properties:
+      Bucket:
+        Ref: "publicWebHostingBucket"
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      LoggingConfiguration:
+        DestinationBucketName: !Ref 'PrivateLogBucket'
+        LogFilePrefix: website-logs
+      PolicyDocument:
+        Statement:
+          -
+            Action: 
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource:
+              Fn::Join:
+                - ""
+                - 
+                  - "arn:aws:s3:::"
+                  - 
+                    Ref: "publicWebHostingBucket"
+                  - "/*"
+            Principal: "*"
+
+    cloudFrontDistro:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          IPV6Enabled: true
+          Origins:
+            Id: !Ref 'ClientVPC'
+            DomainNave: !Ref 'publicWebHostingBucket'
